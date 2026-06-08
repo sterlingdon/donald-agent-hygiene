@@ -1,4 +1,4 @@
-import argparse, time, sys
+import argparse, os, time, sys
 from . import collect_cc, collect_codex, usage_cc, usage_codex, cost, classify, report, actions
 
 
@@ -14,35 +14,61 @@ def _dedup(items):
     return list(seen.values())
 
 
-def run(argv=None) -> int:
-    ap = argparse.ArgumentParser(prog="hygiene")
-    sub = ap.add_subparsers(dest="cmd", required=True)
-    s = sub.add_parser("scan")
-    s.add_argument("--home", required=True)
-    s.add_argument("--codex-home", required=True)
-    s.add_argument("--projects", required=True)
-    s.add_argument("--sessions", required=True)
-    s.add_argument("--cwd", required=True)
-    s.add_argument("--out", required=True)
-    s.add_argument("--window-days", type=int, default=90)
-    args = ap.parse_args(argv)
-
-    items = collect_cc.collect(args.home, cwd=args.cwd) + collect_codex.collect(args.codex_home)
+def _build_findings(home, codex_home, projects, sessions, cwd, window_days):
+    items = collect_cc.collect(home, cwd=cwd) + collect_codex.collect(codex_home)
     items = _dedup(items)
     for it in items:
         cost.estimate(it)
-    sk1, mc1 = usage_cc.collect_usage(args.projects)
-    sk2, mc2 = usage_codex.collect_usage(args.sessions)
+    sk1, mc1 = usage_cc.collect_usage(projects)
+    sk2, mc2 = usage_codex.collect_usage(sessions)
     skills = _merge(sk1, sk2); mcps = _merge(mc1, mc2)
-
-    findings = classify.classify(items, skills, mcps, now=time.time(), window_days=args.window_days)
+    findings = classify.classify(items, skills, mcps, now=time.time(), window_days=window_days)
     for f in findings:
         f.suggested_cmd = actions.suggest_command(f)
-    html = report.render_html(findings, meta={
-        "host": "claude+codex", "generated": time.strftime("%Y-%m-%d %H:%M")})
-    with open(args.out, "w", encoding="utf-8") as fp:
-        fp.write(html)
-    print(f"wrote {args.out}  ({len(findings)} findings)")
+    return findings
+
+
+def run(argv=None) -> int:
+    ap = argparse.ArgumentParser(prog="hygiene")
+    sub = ap.add_subparsers(dest="cmd", required=True)
+
+    s = sub.add_parser("scan")
+    for opt in ("--home", "--codex-home", "--projects", "--sessions", "--cwd", "--out"):
+        s.add_argument(opt, required=True)
+    s.add_argument("--window-days", type=int, default=90)
+
+    ap2 = sub.add_parser("apply")
+    for opt in ("--home", "--codex-home", "--projects", "--sessions", "--cwd"):
+        ap2.add_argument(opt, required=True)
+    ap2.add_argument("--backups", default=os.path.expanduser("~/.agent-hygiene-backups"))
+    ap2.add_argument("--severity", default="green", choices=["green", "yellow"])
+    ap2.add_argument("--kinds", default="skill,mcp")
+    ap2.add_argument("--window-days", type=int, default=90)
+    ap2.add_argument("--apply", action="store_true")
+
+    a = ap.parse_args(argv)
+    findings = _build_findings(a.home, a.codex_home, a.projects, a.sessions, a.cwd, a.window_days)
+
+    if a.cmd == "scan":
+        html = report.render_html(findings, meta={
+            "host": "claude+codex", "generated": time.strftime("%Y-%m-%d %H:%M")})
+        with open(a.out, "w", encoding="utf-8") as fp:
+            fp.write(html)
+        print(f"wrote {a.out}  ({len(findings)} findings)")
+        return 0
+
+    # apply
+    want_kinds = set(a.kinds.split(","))
+    selected = [f for f in findings
+                if f.severity.value == a.severity and f.item.kind.value in want_kinds]
+    applied = 0
+    for f in selected:
+        r = actions.execute(f, backups=a.backups, dry_run=not a.apply, home=a.home)
+        tag = "APPLIED" if r.applied else "DRY-RUN"
+        print(f"[{tag}] {r.kind:14s} {f.item.host.value}/{f.item.kind.value} {f.item.name} :: {r.command}")
+        applied += int(r.applied)
+    print(f"{'APPLIED' if a.apply else 'DRY-RUN'}: {len(selected)} selected, {applied} mutated"
+          + ("" if a.apply else "  (re-run with --apply to execute)"))
     return 0
 
 
