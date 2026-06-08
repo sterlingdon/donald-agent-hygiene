@@ -34,9 +34,22 @@ SKILL_CALL_TYPES = {"function_call", "tool_call", "custom_tool_call"}
 # Field names (in order) to extract the skill/function name from a payload
 SKILL_NAME_FIELDS = ("name", "skill", "tool")
 
+# Codex builtin function names to exclude from skill usage reporting
+CODEX_BUILTIN_FUNCS = {
+    "exec_command", "apply_patch", "write_stdin", "view_image", "update_plan",
+    "request_user_input", "read_thread_terminal", "spawn_agent", "web_search",
+    "kill_command", "read_file", "list_dir", "shell", "container_exec",
+    "send_input", "wait", "read_output",
+}
+
 # Field names (in order) to extract the MCP server name from a payload.
 # For mcp_tool_call_end the server lives in payload.invocation.server — handled specially.
 MCP_SERVER_FIELDS = ("server", "server_name")
+
+
+def _is_builtin(name: str) -> bool:
+    """Check if a function name is a Codex builtin (to be excluded from skill usage)."""
+    return (not name) or name in CODEX_BUILTIN_FUNCS or name.startswith("browser_")
 
 
 def _blank():
@@ -109,7 +122,9 @@ def collect_usage(sessions_root: str) -> Tuple[Dict, Dict]:
                     if ptype in MCP_CALL_TYPES:
                         _bump(mcps, _mcp_server_from_payload(payload), ts)
                     elif ptype in SKILL_CALL_TYPES:
-                        _bump(skills, _first(payload, SKILL_NAME_FIELDS), ts)
+                        name = _first(payload, SKILL_NAME_FIELDS)
+                        if not _is_builtin(name):
+                            _bump(skills, name, ts)
         except OSError:
             continue
 
