@@ -4,7 +4,7 @@ from enum import Enum
 from typing import Optional
 
 class Kind(str, Enum):
-    SKILL = "skill"; MCP = "mcp"; PLUGIN = "plugin"
+    SKILL = "skill"; MCP = "mcp"; PLUGIN = "plugin"; HOOK = "hook"; MEMORY = "memory"
 
 class Host(str, Enum):
     CLAUDE = "claude"; CODEX = "codex"

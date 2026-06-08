@@ -80,4 +80,19 @@ def collect(home: str, cwd: str) -> List[Item]:
     for pid, on in enabled.items():
         items.append(Item(Host.CLAUDE, Kind.PLUGIN, pid, Origin.PLUGIN,
                           os.path.join(home, ".claude/plugins"), bool(on), plugin=pid))
+
+    # HK1/HK2 hooks: settings.json events + enabled-plugin hooks.json
+    settings_path = os.path.join(home, ".claude/settings.json")
+    for event in (read_json(settings_path).get("hooks") or {}):
+        items.append(Item(Host.CLAUDE, Kind.HOOK, f"settings:{event}", Origin.USER_CONFIG,
+                          settings_path, True))
+    for hj in glob.glob(os.path.join(home, ".claude/plugins/cache/**/hooks/hooks.json"), recursive=True):
+        pid = _plugin_id_from_cache_path(hj)
+        items.append(Item(Host.CLAUDE, Kind.HOOK, f"plugin:{pid}", Origin.PLUGIN, hj,
+                          bool(enabled.get(pid, False)), plugin=pid))
+    # ME1 memory: user + project CLAUDE.md
+    for md in (os.path.join(home, ".claude/CLAUDE.md"), os.path.join(cwd, "CLAUDE.md")):
+        if os.path.isfile(md):
+            items.append(Item(Host.CLAUDE, Kind.MEMORY, os.path.basename(md),
+                              Origin.USER_CONFIG, md, True))
     return items

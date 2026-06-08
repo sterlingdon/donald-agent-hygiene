@@ -48,4 +48,13 @@ def collect(codex_home: str) -> List[Item]:
     for name in (cfg.get("mcp_servers") or {}):
         items.append(Item(Host.CODEX, Kind.MCP, name, Origin.USER_CONFIG,
                           os.path.join(codex_home, "config.toml"), True))
+    # ME2 memory: AGENTS.md, memories/, rules/
+    for name in ("AGENTS.md", "memories", "rules"):
+        p = os.path.join(codex_home, name)
+        if os.path.exists(p):
+            items.append(Item(Host.CODEX, Kind.MEMORY, name, Origin.USER_CONFIG, p, True))
+    # HK3 hooks in config.toml
+    if cfg.get("hooks"):
+        items.append(Item(Host.CODEX, Kind.HOOK, "config.toml:hooks", Origin.USER_CONFIG,
+                          os.path.join(codex_home, "config.toml"), True))
     return items
