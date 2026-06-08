@@ -3,6 +3,7 @@ from collections import defaultdict
 from typing import Dict, List, Optional
 from .model import Item, Finding, Severity, Kind, Origin, Host, Usage
 from .normalize import norm_mcp_server
+from . import memory as _memory
 
 SAFETY_HINTS = ("github", "postgres", "supabase", "aws", "filesystem")  # write-capable / sensitive
 SAFETY_SKILL_HINTS = ("security", "vetter", "git-commit")
@@ -39,6 +40,7 @@ def classify(items, skill_usage, mcp_usage, now, window_days) -> List[Finding]:
     findings: List[Finding] = []
     window = window_days * 86400
     overlaps = _overlap_clusters(items)
+    mem_dups = _memory.cross_file_duplicates([it for it in items if it.kind == Kind.MEMORY])
 
     # duplicate detection: same name among ENABLED items
     name_counts = defaultdict(int)
@@ -53,12 +55,19 @@ def classify(items, skill_usage, mcp_usage, now, window_days) -> List[Finding]:
             continue
         # hooks/memory: always-loaded, no usage signal — never auto-green
         if it.kind in (Kind.HOOK, Kind.MEMORY):
-            if it.kind == Kind.MEMORY and it.cost_band == "high":
-                findings.append(Finding(item=it, severity=Severity.YELLOW,
-                    reasons=[f"large memory file (~{it.est_tokens} lines) — consider trimming/splitting"]))
+            mreasons, msev = [], Severity.KEEP
+            if it.kind == Kind.HOOK:
+                mreasons.append("always-loaded hook — review manually")
             else:
-                findings.append(Finding(item=it, severity=Severity.KEEP,
-                    reasons=["always-loaded hook — review manually" if it.kind == Kind.HOOK else "memory file"]))
+                mreasons.append("memory file")
+                if it.cost_band == "high":
+                    mreasons.append(f"large (~{it.est_tokens} lines) — consider trimming/splitting")
+                    msev = Severity.YELLOW
+                dup = mem_dups.get(it.path)
+                if dup:
+                    mreasons.append(f"{dup} entries duplicated in other memory files")
+                    msev = Severity.YELLOW
+            findings.append(Finding(item=it, severity=msev, reasons=mreasons))
             continue
         rec = _match_usage(it, skill_usage, mcp_usage)
         reasons, sev, cmd = [], None, None
