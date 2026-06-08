@@ -61,6 +61,34 @@ def suggest_command(f: Finding) -> str:
     return f"# review: {it.name}"
 
 
+def remove_toml_server(text, server):
+    """Remove the [mcp_servers.<server>] table and any [mcp_servers.<server>.*] sub-tables.
+    A table spans from its '[' header line to the next top-level '[' line or EOF."""
+    prefix = f"mcp_servers.{server}"
+    out, skip = [], False
+    for ln in text.splitlines(keepends=True):
+        s = ln.lstrip()
+        if s.startswith("["):
+            hdr = s[1:].split("]", 1)[0].strip()
+            skip = (hdr == prefix or hdr.startswith(prefix + "."))
+        if not skip:
+            out.append(ln)
+    return "".join(out)
+
+
+def remove_codex_mcp(config_path, server, backups, dry_run=True):
+    plan = f"remove [mcp_servers.{server}] from {config_path}"
+    if dry_run:
+        return plan
+    bk = backup_path(backups)
+    shutil.copy2(config_path, os.path.join(bk, os.path.basename(config_path)))
+    with open(config_path, "r", encoding="utf-8") as f:
+        text = f.read()
+    with open(config_path, "w", encoding="utf-8") as f:
+        f.write(remove_toml_server(text, server))
+    return plan
+
+
 def execute(finding, backups, dry_run=True, home=None):
     """Route a Finding to the right mutation. Dry-run by default; every real
     mutation backs up first. Codex config.toml is never auto-edited (command only)."""
@@ -85,9 +113,14 @@ def execute(finding, backups, dry_run=True, home=None):
             return ActionResult("remove_user_mcp", it.name, cmd, False)
         disable_mcp_user(target, it.name, backups=backups, dry_run=False)
         return ActionResult("remove_user_mcp", it.name, cmd, True, backups)
-    # Codex MCP -> command only (no safe stdlib TOML writer)
+    # Codex MCP -> remove the [mcp_servers.X] table from config.toml (with backup)
     if it.kind == Kind.MCP and it.host == Host.CODEX:
-        return ActionResult("command_only", it.name, f"codex mcp remove '{it.name}'", False)
+        cfg = it.path if it.path.endswith("config.toml") else os.path.join(home, ".codex/config.toml")
+        cmd = f"remove [mcp_servers.{it.name}] from {cfg}"
+        if dry_run:
+            return ActionResult("remove_codex_mcp", it.name, cmd, False)
+        remove_codex_mcp(cfg, it.name, backups=backups, dry_run=False)
+        return ActionResult("remove_codex_mcp", it.name, cmd, True, backups)
     # plugin-owned item -> disable the whole plugin via settings.json
     if it.plugin:
         settings = os.path.join(home, ".claude/settings.json")

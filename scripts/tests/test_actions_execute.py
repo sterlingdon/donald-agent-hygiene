@@ -29,10 +29,17 @@ def test_remove_user_mcp_apply(tmp_path):
     assert "drop" not in json.loads(cj.read_text())["mcpServers"]
 
 
-def test_codex_mcp_is_command_only(tmp_path):
-    it = Item(Host.CODEX, Kind.MCP, "node_repl", Origin.USER_CONFIG, str(tmp_path / "config.toml"), True)
+def test_codex_mcp_removed_from_toml(tmp_path):
+    import tomllib
+    cfg = tmp_path / "config.toml"
+    cfg.write_text('[mcp_servers.node_repl]\ncommand = "node"\n\n[mcp_servers.keep]\ncommand = "x"\n')
+    it = Item(Host.CODEX, Kind.MCP, "node_repl", Origin.USER_CONFIG, str(cfg), True)
+    r0 = execute(_find(it), backups=str(tmp_path / "bk"), dry_run=True)
+    assert r0.kind == "remove_codex_mcp" and r0.applied is False and cfg.read_text()  # untouched
     r = execute(_find(it), backups=str(tmp_path / "bk"), dry_run=False)
-    assert r.kind == "command_only" and r.applied is False and "codex mcp remove" in r.command
+    assert r.kind == "remove_codex_mcp" and r.applied
+    data = tomllib.loads(cfg.read_text())
+    assert "node_repl" not in data["mcp_servers"] and "keep" in data["mcp_servers"]
 
 
 def test_disable_plugin_apply(tmp_path):
