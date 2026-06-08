@@ -801,7 +801,9 @@ def _skill_item(skill_dir: str, origin: Origin, enabled: bool, plugin=None, ns=N
                 match_keys=frozenset(skill_match_keys(name)))
 
 def _enabled_plugins(home: str) -> dict:
-    data = read_json(os.path.join(home, ".claude.json"))
+    # CORRECTION (verified on real machine): enabledPlugins lives in
+    # ~/.claude/settings.json, NOT ~/.claude.json (which holds mcpServers).
+    data = read_json(os.path.join(home, ".claude/settings.json"))
     return data.get("enabledPlugins") or {}
 
 def _plugin_id_from_cache_path(path: str) -> str:

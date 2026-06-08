@@ -19,18 +19,19 @@ def fake_home(tmp_path):
     # S4 catalog skill (marketplace, not active)
     _w(f"{h}/.claude/plugins/marketplaces/anthropic-agent-skills/skills/pdf/SKILL.md",
        "---\nname: pdf\ndescription: pdf tools\n---\nbody")
-    # M1 user MCP + P1 enabledPlugins  (live in ~/.claude.json)
+    # M1 user MCP (lives in ~/.claude.json)
     _w(f"{h}/.claude.json", json.dumps({
         "mcpServers": {"playwright-extension": {"command": "npx"},
                        "Framelink Figma MCP": {"command": "npx"}},
-        "enabledPlugins": {"superpowers@off": True, "playwright@off": False},
     }))
     # M3 plugin-bundled MCP (enabled plugin 'superpowers' has none; add a fake enabled neon)
     _w(f"{h}/.claude/plugins/cache/off/neon/1.0.0/.mcp.json",
        json.dumps({"mcpServers": {"neon": {"command": "npx"}}}))
+    # P1 enabledPlugins (lives in ~/.claude/settings.json)
+    _w(f"{h}/.claude/settings.json", json.dumps({
+        "enabledPlugins": {"superpowers@off": True, "playwright@off": False},
+    }))
     _patch_enabled(h, "neon@off", True)
-    # settings.json (no project mcp flags)
-    _w(f"{h}/.claude/settings.json", json.dumps({}))
     # Codex: S5 active, S6 catalog, M4 mcp
     _w(f"{h}/.codex/skills/codexalpha/SKILL.md", "---\nname: codexalpha\ndescription: cx\n---\nb")
     _w(f"{h}/.codex/vendor_imports/skills/skills/.curated/sentry/SKILL.md",
@@ -39,7 +40,7 @@ def fake_home(tmp_path):
     return h
 
 def _patch_enabled(h, key, val):
-    p = f"{h}/.claude.json"
+    p = f"{h}/.claude/settings.json"
     with open(p) as f: data = json.load(f)
-    data["enabledPlugins"][key] = val
+    data.setdefault("enabledPlugins", {})[key] = val
     with open(p, "w") as f: json.dump(data, f)
