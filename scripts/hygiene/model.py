@@ -43,3 +43,12 @@ class Finding:
     reasons: list                     # list[str]
     usage: Optional[Usage] = None
     suggested_cmd: Optional[str] = None
+
+
+@dataclass
+class ActionResult:
+    kind: str            # archive_skill | remove_user_mcp | disable_plugin | command_only | skip
+    target: str          # path or name acted on
+    command: str         # human-readable description / shell command
+    applied: bool        # True if a mutation actually happened
+    backup: str = ""     # backup dir/file if any
