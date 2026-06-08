@@ -82,6 +82,10 @@ def classify(items, skill_usage, mcp_usage, now, window_days) -> List[Finding]:
                 if is_safety:
                     reasons.append("never used but write-scoped/safety — review manually")
                     sev = Severity.RED
+                elif it.host == Host.CODEX and it.kind == Kind.SKILL:
+                    # Codex skill-invocation detection is best-effort; never auto-clean
+                    reasons.append("no recorded use (Codex usage is best-effort — verify before removing)")
+                    sev = Severity.YELLOW
                 else:
                     reasons.append("never used")
                     sev = Severity.GREEN
