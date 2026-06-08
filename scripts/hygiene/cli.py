@@ -46,6 +46,14 @@ def run(argv=None) -> int:
     ap2.add_argument("--window-days", type=int, default=90)
     ap2.add_argument("--apply", action="store_true")
 
+    sv = sub.add_parser("serve")
+    for opt in ("--home", "--codex-home", "--projects", "--sessions", "--cwd"):
+        sv.add_argument(opt, required=True)
+    sv.add_argument("--backups", default=os.path.expanduser("~/.agent-hygiene-backups"))
+    sv.add_argument("--port", type=int, default=8765)
+    sv.add_argument("--window-days", type=int, default=90)
+    sv.add_argument("--probe", action="store_true", help=argparse.SUPPRESS)
+
     a = ap.parse_args(argv)
     findings = _build_findings(a.home, a.codex_home, a.projects, a.sessions, a.cwd, a.window_days)
 
@@ -57,18 +65,35 @@ def run(argv=None) -> int:
         print(f"wrote {a.out}  ({len(findings)} findings)")
         return 0
 
-    # apply
-    want_kinds = set(a.kinds.split(","))
-    selected = [f for f in findings
-                if f.severity.value == a.severity and f.item.kind.value in want_kinds]
-    applied = 0
-    for f in selected:
-        r = actions.execute(f, backups=a.backups, dry_run=not a.apply, home=a.home)
-        tag = "APPLIED" if r.applied else "DRY-RUN"
-        print(f"[{tag}] {r.kind:14s} {f.item.host.value}/{f.item.kind.value} {f.item.name} :: {r.command}")
-        applied += int(r.applied)
-    print(f"{'APPLIED' if a.apply else 'DRY-RUN'}: {len(selected)} selected, {applied} mutated"
-          + ("" if a.apply else "  (re-run with --apply to execute)"))
+    if a.cmd == "apply":
+        want_kinds = set(a.kinds.split(","))
+        selected = [f for f in findings
+                    if f.severity.value == a.severity and f.item.kind.value in want_kinds]
+        applied = 0
+        for f in selected:
+            r = actions.execute(f, backups=a.backups, dry_run=not a.apply, home=a.home)
+            tag = "APPLIED" if r.applied else "DRY-RUN"
+            print(f"[{tag}] {r.kind:14s} {f.item.host.value}/{f.item.kind.value} {f.item.name} :: {r.command}")
+            applied += int(r.applied)
+        print(f"{'APPLIED' if a.apply else 'DRY-RUN'}: {len(selected)} selected, {applied} mutated"
+              + ("" if a.apply else "  (re-run with --apply to execute)"))
+        return 0
+
+    # serve
+    from . import serve as serve_mod
+    httpd, token = serve_mod.build_server(findings, backups=a.backups, home=a.home, port=a.port)
+    _host, port = httpd.server_address
+    print(f"hygiene report serving on http://127.0.0.1:{port}/   token={token}")
+    print("Open in a browser. 'execute' buttons mutate with backup. Ctrl-C to stop.")
+    if a.probe:
+        httpd.server_close()
+        return 0
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        print("\nstopped")
+    finally:
+        httpd.server_close()
     return 0
 
 
