@@ -18,6 +18,16 @@ def test_archive_skill_apply_moves_and_backs_up(tmp_path):
     assert "z" in backed                               # backup copy exists
 
 
+def test_archive_symlinked_skill_unlinks_only(tmp_path):
+    real = tmp_path / "real" / "design"; real.mkdir(parents=True); (real / "SKILL.md").write_text("x")
+    link = tmp_path / "skills" / "design"; link.parent.mkdir(parents=True)
+    os.symlink(str(real), str(link))
+    plan = archive_skill(str(link), backups=str(tmp_path / "bk"), dry_run=False)
+    assert not os.path.lexists(link)            # symlink removed
+    assert (real / "SKILL.md").exists()         # plugin-owned target untouched
+    assert "unlink" in plan.lower()
+
+
 def test_disable_mcp_user_apply_rewrites_json_with_backup(tmp_path):
     cj = tmp_path / ".claude.json"
     cj.write_text(json.dumps({"mcpServers": {"keep": {}, "drop": {}}}))

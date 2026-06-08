@@ -23,11 +23,15 @@ def _match_usage(item: Item, skill_usage: Dict, mcp_usage: Dict) -> Optional[dic
     return None
 
 def _overlap_clusters(items: List[Item]) -> Dict[str, int]:
-    """Map item.name -> cluster size for skills sharing a name prefix token (>=3 members)."""
+    """Map item.name -> family size for PERSONAL/PROJECT skills that share a leading
+    name token. The plugin namespace is stripped first (so distinct skills from one
+    plugin, e.g. superpowers:*, never look like redundancy), and plugin/catalog skills
+    are excluded entirely (they aren't individually removable)."""
     buckets = defaultdict(list)
     for it in items:
-        if it.kind == Kind.SKILL and it.enabled:
-            token = re.split(r"[-_:]", it.name)[0].lower()
+        if it.kind == Kind.SKILL and it.enabled and it.origin in (Origin.PERSONAL, Origin.PROJECT):
+            base = it.name.split(":")[-1]          # drop plugin namespace
+            token = re.split(r"[-_]", base)[0].lower()
             buckets[token].append(it.name)
     size = {}
     for token, names in buckets.items():
@@ -104,6 +108,11 @@ def classify(items, skill_usage, mcp_usage, now, window_days) -> List[Finding]:
                     # Codex skill-invocation detection is best-effort; never auto-clean
                     reasons.append("no recorded use (Codex usage is best-effort — verify before removing)")
                     sev = Severity.YELLOW
+                elif it.kind == Kind.SKILL and it.origin == Origin.PLUGIN:
+                    # a single plugin skill can't be removed on its own; disabling the
+                    # plugin would also drop the skills you DO use — so never auto-green
+                    reasons.append("unused, but part of a plugin (disable the whole plugin only if you use none of its skills)")
+                    sev = Severity.YELLOW
                 else:
                     reasons.append("never used")
                     sev = Severity.GREEN
@@ -111,11 +120,10 @@ def classify(items, skill_usage, mcp_usage, now, window_days) -> List[Finding]:
             if it.kind == Kind.SKILL and name_counts.get(it.name.split(":")[-1], 0) > 1:
                 reasons.append("duplicate name across locations")
                 sev = Severity.YELLOW if sev == Severity.KEEP else sev
-            # D5 overlap
+            # D5 naming-family overlap — informational only, never changes severity
+            # (don't demote an actively-used skill just because it shares a prefix)
             if it.name in overlaps:
-                reasons.append(f"overlap cluster x{overlaps[it.name]}")
-                if sev == Severity.KEEP:
-                    sev = Severity.YELLOW
+                reasons.append(f"one of {overlaps[it.name]} skills sharing this name prefix — possible overlap, review")
             # D6 heavy + not recent
             if it.kind == Kind.MCP and it.cost_band == "high" and not recent:
                 reasons.append("high context cost, low use")

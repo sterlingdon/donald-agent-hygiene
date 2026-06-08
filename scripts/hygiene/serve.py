@@ -17,12 +17,22 @@ from .model import Severity
 
 _ACTIONABLE_SEV = {Severity.GREEN, Severity.YELLOW}
 _ACTIONABLE_KINDS = {"skill", "mcp"}
+# one-click only offers SELF-CONTAINED actions; disabling a whole plugin (broad hammer,
+# and duplicated per cached skill) and no-op 'skip' items are kept out of the panel.
+_SELF_CONTAINED = {"archive_skill", "remove_user_mcp", "remove_codex_mcp"}
 
 
-def actionable_index(findings):
-    """(idx, finding) pairs that actions.execute can act on (green/yellow skill/mcp)."""
-    return [(i, f) for i, f in enumerate(findings)
-            if f.severity in _ACTIONABLE_SEV and f.item.kind.value in _ACTIONABLE_KINDS]
+def actionable_index(findings, backups="/tmp/agent-hygiene-dryrun", home=None):
+    """(idx, finding) pairs the server offers a one-click button for: green/yellow
+    skill/mcp whose execute() is a self-contained mutation (not disable-whole-plugin
+    or a no-op). execute(dry_run=True) has no side effects, so probing is safe."""
+    out = []
+    for i, f in enumerate(findings):
+        if f.severity not in _ACTIONABLE_SEV or f.item.kind.value not in _ACTIONABLE_KINDS:
+            continue
+        if actions.execute(f, backups=backups, dry_run=True, home=home).kind in _SELF_CONTAINED:
+            out.append((i, f))
+    return out
 
 
 def apply_one(findings, idx, backups, home, dry_run=False):

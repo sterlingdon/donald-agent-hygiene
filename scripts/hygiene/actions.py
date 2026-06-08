@@ -11,13 +11,22 @@ def backup_path(backups: str) -> str:
 
 
 def archive_skill(skill_dir: str, backups: str, dry_run: bool = True) -> str:
-    dest = os.path.join(backup_path(backups), os.path.basename(skill_dir.rstrip("/")))
-    plan = f"mv {skill_dir} {dest}"
-    if dry_run:
-        return plan
+    skill_dir = skill_dir.rstrip("/")
+    base = os.path.basename(skill_dir)
+    is_link = os.path.islink(skill_dir)
+    if dry_run:  # no side effects in dry-run (don't even create the backup dir)
+        return f"unlink {skill_dir} (symlink)" if is_link else f"mv {skill_dir} -> {backups}/<ts>/{base}"
+    bk = backup_path(backups)
+    if is_link:
+        # only un-expose the symlink; its target (e.g. a plugin cache) stays in place
+        with open(os.path.join(bk, base + ".symlink"), "w", encoding="utf-8") as f:
+            f.write(os.readlink(skill_dir))
+        os.unlink(skill_dir)
+        return f"unlinked {skill_dir} (was a symlink; target untouched)"
+    dest = os.path.join(bk, base)
     shutil.copytree(skill_dir, dest, dirs_exist_ok=True)
     shutil.rmtree(skill_dir)
-    return plan
+    return f"mv {skill_dir} -> {dest}"
 
 
 def disable_mcp_user(claude_json: str, server: str, backups: str, dry_run: bool = True) -> str:
@@ -96,14 +105,11 @@ def execute(finding, backups, dry_run=True, home=None):
     home = home or os.path.expanduser("~")
     # CC / Codex personal/project skill -> archive the directory
     if it.kind == Kind.SKILL and it.origin in (Origin.PERSONAL, Origin.PROJECT):
-        cmd = archive_skill(it.path, backups=backups, dry_run=True)
         if dry_run:
-            return ActionResult("archive_skill", it.path, cmd, False)
-        dest_parent = backup_path(backups)
-        dest = os.path.join(dest_parent, os.path.basename(it.path.rstrip("/")))
-        shutil.copytree(it.path, dest, dirs_exist_ok=True)
-        shutil.rmtree(it.path)
-        return ActionResult("archive_skill", it.path, cmd, True, dest_parent)
+            return ActionResult("archive_skill", it.path,
+                                archive_skill(it.path, backups=backups, dry_run=True), False)
+        cmd = archive_skill(it.path, backups=backups, dry_run=False)
+        return ActionResult("archive_skill", it.path, cmd, True, backups)
     # CC user-config MCP -> remove from ~/.claude.json
     if it.kind == Kind.MCP and it.origin == Origin.USER_CONFIG and it.host == Host.CLAUDE:
         claude_json = os.path.join(home, ".claude.json")

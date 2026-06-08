@@ -16,6 +16,14 @@ def test_actionable_index_filters():
     assert names == ["g", "y"]                  # keep + memory excluded
 
 
+def test_actionable_excludes_plugin_disable_and_skip():
+    # a yellow plugin skill -> execute would disable the whole plugin -> not one-click
+    plug = _f("superpowers:x", Severity.YELLOW, origin=Origin.PLUGIN, plugin="sp@mp")
+    # a Codex plugin skill with no plugin id -> execute 'skip' -> not one-click
+    skipper = _f("cxorphan", Severity.YELLOW, origin=Origin.PLUGIN, host=Host.CODEX)
+    assert actionable_index([plug, skipper]) == []
+
+
 def test_render_has_buttons_token_and_apply():
     html = render_interactive_html([_f("g", Severity.GREEN)], token="TOK123", meta={})
     assert "execute" in html and "TOK123" in html and "/apply?i=" in html
