@@ -1,5 +1,5 @@
 import argparse, os, time, sys
-from . import collect_cc, collect_codex, usage_cc, usage_codex, cost, classify, report, actions
+from . import collect_cc, collect_codex, usage_cc, usage_codex, cost, classify, report, actions, state
 
 
 def _dedup(items):
@@ -54,7 +54,27 @@ def run(argv=None) -> int:
     sv.add_argument("--window-days", type=int, default=90)
     sv.add_argument("--probe", action="store_true", help=argparse.SUPPRESS)
 
+    dg = sub.add_parser("digest")
+    dg.add_argument("--state", default=None)
+
+    ih = sub.add_parser("install-hook")
+    ih.add_argument("--home", default=os.path.expanduser("~"))
+    ih.add_argument("--apply", action="store_true")
+
     a = ap.parse_args(argv)
+
+    # instant, pipeline-free commands
+    if a.cmd == "digest":
+        st = state.read_state(a.state or state.default_state_path())
+        if not st:
+            print("🧹 hygiene: no scan yet — run 'hygiene scan'")
+        else:
+            print(f"🧹 hygiene: 🟢{st.get('green', 0)} 🟡{st.get('yellow', 0)} "
+                  f"(checked {_age(time.time() - st.get('ts', 0))}) — run 'hygiene serve' to clean")
+        return 0
+    if a.cmd == "install-hook":
+        return _install_hook(a)
+
     findings = _build_findings(a.home, a.codex_home, a.projects, a.sessions, a.cwd, a.window_days)
 
     if a.cmd == "scan":
@@ -62,6 +82,7 @@ def run(argv=None) -> int:
             "host": "claude+codex", "generated": time.strftime("%Y-%m-%d %H:%M")})
         with open(a.out, "w", encoding="utf-8") as fp:
             fp.write(html)
+        state.write_state(state.default_state_path(), findings)
         print(f"wrote {a.out}  ({len(findings)} findings)")
         return 0
 
@@ -94,6 +115,46 @@ def run(argv=None) -> int:
         print("\nstopped")
     finally:
         httpd.server_close()
+    return 0
+
+
+def _age(secs):
+    secs = max(0, int(secs))
+    if secs < 3600:
+        return f"{secs // 60}m ago"
+    if secs < 86400:
+        return f"{secs // 3600}h ago"
+    return f"{secs // 86400}d ago"
+
+
+def _install_hook(a):
+    import json, shutil
+    scripts_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    hook_cmd = f"cd {scripts_dir} && python -m hygiene.cli digest"
+    settings = os.path.join(a.home, ".claude", "settings.json")
+    data = {}
+    if os.path.isfile(settings):
+        try:
+            with open(settings) as f:
+                data = json.load(f)
+        except (OSError, json.JSONDecodeError):
+            data = {}
+    sessionstart = (data.get("hooks") or {}).get("SessionStart", [])
+    if any("hygiene.cli digest" in json.dumps(e) for e in sessionstart):
+        print("install-hook: SessionStart digest hook already present — nothing to do")
+        return 0
+    if not a.apply:
+        print(f"[DRY-RUN] would add SessionStart hook to {settings}:\n  {hook_cmd}")
+        print("re-run with --apply to install")
+        return 0
+    os.makedirs(os.path.dirname(settings), exist_ok=True)
+    if os.path.isfile(settings):
+        shutil.copy2(settings, settings + ".hygiene-bak")
+    data.setdefault("hooks", {}).setdefault("SessionStart", []).append(
+        {"matcher": "*", "hooks": [{"type": "command", "command": hook_cmd}]})
+    with open(settings, "w") as f:
+        json.dump(data, f, indent=2)
+    print(f"installed SessionStart digest hook into {settings}")
     return 0
 
 
