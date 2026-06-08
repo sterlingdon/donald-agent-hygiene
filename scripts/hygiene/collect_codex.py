@@ -5,8 +5,16 @@ from .util import read_frontmatter, read_toml
 from .normalize import skill_match_keys
 
 # active skill roots vs catalog/cache/tmp (inactive)
-def _origin_for(md_path: str) -> (Origin, bool):
+def _origin_for(md_path: str):
+    """
+    Classify a SKILL.md path to (origin, enabled) or None to skip.
+    Returns None for non-user-manageable system skills.
+    """
     low = md_path.lower()
+    if f"{os.sep}skills{os.sep}.system{os.sep}" in low:
+        return None  # Skip system skills entirely
+    if f"{os.sep}plugins{os.sep}cache{os.sep}" in low:
+        return Origin.PLUGIN, True
     if ".curated" in low or "vendor_imports" in low:
         return Origin.CATALOG, False
     if f"{os.sep}.tmp{os.sep}" in low or "legacy-" in low:
@@ -25,8 +33,11 @@ def collect(codex_home: str) -> List[Item]:
     items: List[Item] = []
     # S5/S6/S7 skills (skills/, superpowers/skills/, vendor_imports curated, .tmp legacy)
     for md in _find_skill_mds(codex_home):
+        result = _origin_for(md)
+        if result is None:
+            continue  # Skip non-user-manageable skills
+        origin, enabled = result
         sd = os.path.dirname(md)
-        origin, enabled = _origin_for(md)
         fm = read_frontmatter(md)
         name = fm.get("name") or os.path.basename(sd)
         items.append(Item(Host.CODEX, Kind.SKILL, name, origin, sd, enabled,
