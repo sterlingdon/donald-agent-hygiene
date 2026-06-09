@@ -28,9 +28,9 @@ def test_overlap_does_not_demote_used_skill():
     used = [f for f in fs if f.item.name == "tavily-search"][0]
     assert used.severity == Severity.KEEP
     assert any("overlap" in r for r in used.reasons)        # still annotated
-    # the unused siblings are still green
+    # the unused siblings are review-only now (B: usage detection is limited)
     unused = [f for f in fs if f.item.name == "tavily-research"][0]
-    assert unused.severity == Severity.GREEN
+    assert unused.severity == Severity.YELLOW
 
 
 def test_plugin_skill_unused_is_yellow_not_green():
@@ -40,7 +40,15 @@ def test_plugin_skill_unused_is_yellow_not_green():
     assert "plugin" in " ".join(f.reasons).lower()
 
 
-def test_personal_skill_unused_still_green():
+def test_personal_skill_unused_is_yellow():
+    # B: a personal skill with no detected usage is review-only, not auto-cleanable
     it = _skill("lonely-personal-skill")
+    f = [x for x in classify([it], {}, {}, NOW, 90) if x.item is it][0]
+    assert f.severity == Severity.YELLOW and "detection is limited" in " ".join(f.reasons)
+
+
+def test_unused_mcp_stays_green():
+    # MCP usage is reliably logged (every mcp__ call), so 'never used' stays actionable
+    it = Item(Host.CLAUDE, Kind.MCP, "obscure-mcp", Origin.USER_CONFIG, "/p", True)
     f = [x for x in classify([it], {}, {}, NOW, 90) if x.item is it][0]
     assert f.severity == Severity.GREEN

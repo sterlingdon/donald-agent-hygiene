@@ -17,7 +17,7 @@ def test_codex_never_used_skill_is_yellow_not_green():
     assert f.severity == Severity.YELLOW   # Codex usage is unreliable -> never auto-clean
 
 
-def test_cc_never_used_skill_still_green():
+def test_cc_never_used_skill_is_yellow():
     it = _skill(Host.CLAUDE, "someccskill")
     f = [x for x in classify([it], {}, {}, NOW, 90) if x.item is it][0]
-    assert f.severity == Severity.GREEN    # CC usage data is reliable
+    assert f.severity == Severity.YELLOW   # B: review-only — usage detection is limited

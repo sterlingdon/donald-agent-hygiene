@@ -113,7 +113,14 @@ def classify(items, skill_usage, mcp_usage, now, window_days) -> List[Finding]:
                     # plugin would also drop the skills you DO use — so never auto-green
                     reasons.append("unused, but part of a plugin (disable the whole plugin only if you use none of its skills)")
                     sev = Severity.YELLOW
+                elif it.kind == Kind.SKILL:
+                    # remaining: CC personal/project skill. Usage detection is signal-limited
+                    # (only recent transcripts; may miss some invocation paths), so never
+                    # assert "safe to delete" — flag for review instead.
+                    reasons.append("no usage detected — detection is limited (recent sessions only); verify before removing")
+                    sev = Severity.YELLOW
                 else:
+                    # MCP: every mcp__ tool call is logged, so "never used" is reliable here
                     reasons.append("never used")
                     sev = Severity.GREEN
             # D4 duplicate

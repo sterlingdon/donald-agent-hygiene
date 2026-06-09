@@ -17,7 +17,8 @@ def test_keep_when_recent():                       # D7
 def test_green_never_used_active():                # D1
     it = _skill("never-used")
     f = _index(classify([it], {}, {}, NOW, 90))["never-used"]
-    assert f.severity == Severity.GREEN and "never used" in " ".join(f.reasons)
+    # B: an unused skill is review-only now (usage detection is signal-limited)
+    assert f.severity == Severity.YELLOW and "detection is limited" in " ".join(f.reasons)
 
 def test_yellow_stale():                           # D2
     it = _skill("alpha")

@@ -42,7 +42,7 @@ def collect(codex_home: str) -> List[Item]:
         name = fm.get("name") or os.path.basename(sd)
         items.append(Item(Host.CODEX, Kind.SKILL, name, origin, sd, enabled,
                           description=fm.get("description", ""),
-                          match_keys=frozenset(skill_match_keys(name))))
+                          match_keys=frozenset(set(skill_match_keys(name)) | {os.path.basename(sd)})))
     # M4 MCP from config.toml
     cfg = read_toml(os.path.join(codex_home, "config.toml"))
     for name in (cfg.get("mcp_servers") or {}):

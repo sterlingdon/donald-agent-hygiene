@@ -8,10 +8,11 @@ def _skill_item(skill_dir: str, origin: Origin, enabled: bool, plugin=None, ns=N
     fm = read_frontmatter(os.path.join(skill_dir, "SKILL.md"))
     base = fm.get("name") or os.path.basename(skill_dir)
     name = f"{ns}:{base}" if ns else base
+    keys = set(skill_match_keys(name)) | {os.path.basename(skill_dir)}  # match usage by dir name too
     return Item(host=Host.CLAUDE, kind=Kind.SKILL, name=name, origin=origin,
                 path=skill_dir, enabled=enabled, plugin=plugin,
                 description=fm.get("description", ""),
-                match_keys=frozenset(skill_match_keys(name)))
+                match_keys=frozenset(keys))
 
 def _enabled_plugins(home: str) -> dict:
     # enabledPlugins lives in ~/.claude/settings.json (NOT ~/.claude.json)

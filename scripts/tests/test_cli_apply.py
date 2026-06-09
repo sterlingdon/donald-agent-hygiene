@@ -16,7 +16,8 @@ def test_apply_dry_run_changes_nothing(fake_home):
 
 
 def test_apply_executes_with_flag(fake_home):
+    # an unused personal skill is now 🟡 (B), so clean it via --severity yellow
     sd = fake_home / ".claude" / "skills" / "never-used"
-    rc = run(_args(fake_home, ["--severity", "green", "--apply"]))
+    rc = run(_args(fake_home, ["--severity", "yellow", "--apply"]))
     assert rc == 0 and not sd.exists()      # archived
     assert (fake_home / "bk").exists()      # backup created
